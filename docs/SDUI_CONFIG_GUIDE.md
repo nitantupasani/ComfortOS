@@ -23,6 +23,11 @@
    - [Wellness Centre Dashboard](#64-wellness-centre--health--air-quality)
 7. [Best Practices](#7-best-practices)
 8. [Location Form Config](#8-location-form-config)
+9. [Populating Dashboard Fields from 3rd-Party APIs](#9-populating-dashboard-fields-from-3rd-party-apis)
+   - [Built-in Example: Real-Time Weather](#91-built-in-example-real-time-weather-via-open-meteo)
+   - [Extending to Other Data Sources](#92-extending-the-pattern-to-other-data-sources)
+   - [Implementation Approach](#93-implementation-approach)
+   - [Free APIs for Building Dashboards](#94-free-apis-suitable-for-building-dashboards)
 
 ---
 
@@ -903,6 +908,160 @@ floor/room dropdowns for each building. It follows a simple schema:
 - `floors` — ordered list of floor options.
 - `rooms` — map from floor `value` to its list of room options.
 - When `null` is returned, the app falls back to free-text entry fields.
+
+---
+
+## 9. Populating Dashboard Fields from 3rd-Party APIs
+
+SDUI configs can contain **placeholder values** (`"--"`) for fields that
+should be populated at runtime from external data sources. The app's
+injection layer replaces these placeholders with live data fetched from
+building-specific APIs.
+
+### 9.1 Built-in Example: Real-Time Weather via Open-Meteo
+
+The `weather_badge` widget is the canonical example of this pattern:
+
+1. **Building location is stored in the database.** Each building record
+   includes `latitude` and `longitude` fields.
+2. **The SDUI config uses placeholder values:**
+
+   ```json
+   {
+     "type": "weather_badge",
+     "temp": "--",
+     "unit": "°C",
+     "label": "Outside",
+     "icon": "cloud"
+   }
+   ```
+
+3. **At runtime** the app resolves the active building's coordinates and
+   calls the [Open-Meteo API](https://open-meteo.com/en/docs) (free, no
+   API key required):
+
+   ```
+   GET https://api.open-meteo.com/v1/forecast
+       ?latitude=37.77
+       &longitude=-122.42
+       &current=temperature_2m,relative_humidity_2m,apparent_temperature,
+                wind_speed_10m,weather_code
+       &timezone=auto
+   ```
+
+4. **The injection layer** (`DashboardScreen._injectWeather`) walks the
+   SDUI tree, finds every `weather_badge` node, and overwrites `temp`,
+   `icon`, and `label` with the live values.
+
+5. **Caching & rate limiting:**
+   - Results are cached in-memory for 15 minutes.
+   - When the user presses the **Refresh** button the cache is cleared and
+     a fresh API call is made.
+   - A **per-user rate limit** (30 requests / hour by default) prevents
+     abuse; once exceeded the cached (possibly stale) value is returned.
+
+### 9.2 Extending the Pattern to Other Data Sources
+
+The same approach works for **any** dashboard field that should reflect
+live, building-specific data from a 3rd-party or internal API. Below are
+examples showing how the config could be extended.
+
+#### Example A — Indoor CO₂ from a Building IoT API
+
+```json
+{
+  "type": "metric_tile",
+  "icon": "co2",
+  "value": "--",
+  "unit": "ppm",
+  "label": "CO₂",
+  "_data_source": {
+    "provider": "building_iot_api",
+    "endpoint": "https://iot.example.com/v1/buildings/{buildingId}/sensors/co2",
+    "field": "current_ppm",
+    "refresh_seconds": 300
+  }
+}
+```
+
+The `_data_source` metadata tells the injection layer which API to call.
+`{buildingId}` is interpolated from the active building. The response
+JSON's `current_ppm` field replaces `"--"` in `value`.
+
+#### Example B — Outdoor Air Quality from Open-Meteo Air Quality API
+
+```json
+{
+  "type": "kpi_card",
+  "title": "Air Quality Index",
+  "value": "--",
+  "unit": " AQI",
+  "_data_source": {
+    "provider": "open_meteo_air_quality",
+    "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&current=european_aqi",
+    "field": "current.european_aqi"
+  }
+}
+```
+
+`{lat}` and `{lon}` are resolved from the building's coordinates, just
+like the weather badge. This is a **free API** with no key required.
+
+#### Example C — Energy Consumption from a Utility API
+
+```json
+{
+  "type": "kpi_card",
+  "title": "Grid Consumption",
+  "value": "--",
+  "unit": " kW",
+  "trend": "down",
+  "color": "orange",
+  "_data_source": {
+    "provider": "utility_api",
+    "endpoint": "https://energy.example.com/v1/meters/{meterId}/current",
+    "field": "power_kw",
+    "auth": "bearer",
+    "refresh_seconds": 60
+  }
+}
+```
+
+#### Example D — Indoor Temperature from a BMS (Building Management System)
+
+```json
+{
+  "type": "metric_tile",
+  "icon": "thermostat",
+  "value": "--",
+  "unit": "°C",
+  "label": "Indoor Temp",
+  "_data_source": {
+    "provider": "bms_api",
+    "endpoint": "https://bms.example.com/api/zones/{zoneId}/temperature",
+    "field": "value",
+    "refresh_seconds": 120
+  }
+}
+```
+
+### 9.3 Implementation Approach
+
+| Approach | How it works | Best for |
+|----------|-------------|----------|
+| **Server-side injection** | The backend resolves `_data_source` before returning the config. The app receives ready-to-render values. | Production deployments where the backend already aggregates sensor data. |
+| **Client-side injection** | The app reads `_data_source`, makes the HTTP call, and patches the SDUI tree before rendering (as done today for `weather_badge`). | Lightweight deployments, free APIs, or when the backend has no integration layer. |
+| **Hybrid** | The backend pre-fills most fields; the app refreshes a subset (e.g. weather) on demand. | Best of both worlds. |
+
+### 9.4 Free APIs Suitable for Building Dashboards
+
+| API | Data | URL | Key Required |
+|-----|------|-----|-------------|
+| **Open-Meteo Weather** | Temperature, humidity, wind, weather condition | `api.open-meteo.com/v1/forecast` | No |
+| **Open-Meteo Air Quality** | AQI, PM2.5, PM10, ozone, NO₂ | `air-quality-api.open-meteo.com/v1/air-quality` | No |
+| **Open-Meteo Geocoding** | City → lat/lon lookup | `geocoding-api.open-meteo.com/v1/search` | No |
+| **Open UV** | UV index by location | `api.openuv.io/api/v1/uv` | Yes (free tier) |
+| **PurpleAir** | Hyper-local air quality sensors | `api.purpleair.com/v1/sensors` | Yes (free tier) |
 
 ---
 

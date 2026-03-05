@@ -107,7 +107,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   GestureDetector(
                     onTap: () {
                       ref.invalidate(dashboardConfigProvider(building.id));
-                      ref.invalidate(weatherProvider);
+                      refreshWeather(ref);
                     },
                     child: Icon(Icons.refresh,
                         size: 20, color: Colors.grey[400]),
@@ -135,7 +135,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   return RefreshIndicator(
                     onRefresh: () async {
                       ref.invalidate(dashboardConfigProvider(building.id));
-                      ref.invalidate(weatherProvider);
+                      refreshWeather(ref);
                     },
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -331,6 +331,9 @@ class _LocationChangeSheetState extends ConsumerState<_LocationChangeSheet> {
 
     // Refresh dashboard data for the (possibly new) building.
     ref.invalidate(dashboardConfigProvider(_selectedBuildingId!));
+    // Clear weather cache and force a fresh API call for the new building.
+    final weatherSvc = ref.read(weatherServiceProvider);
+    weatherSvc.clearCache();
     ref.invalidate(weatherProvider);
 
     if (mounted) Navigator.of(context).pop();

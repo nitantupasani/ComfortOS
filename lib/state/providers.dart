@@ -145,20 +145,67 @@ final locationFormConfigProvider =
 
 // ── Weather ─────────────────────────────────────────────────────────────
 
-/// Weather service singleton (in-memory caching, Open-Meteo).
+/// Weather service singleton (in-memory caching, Open-Meteo, per-user rate
+/// limiting).
 final weatherServiceProvider = Provider<WeatherService>((_) => WeatherService());
 
+/// Internal counter incremented every time the user explicitly refreshes
+/// weather (via the refresh button). Invalidating this provider forces the
+/// `weatherProvider` to re-evaluate even when presence hasn't changed.
+final _weatherRefreshCounterProvider = StateProvider<int>((_) => 0);
+
 /// Live weather for the currently active building.
-/// Auto-refreshes when the building changes. Returns null on error / no coords.
+///
+/// - Location (lat/lon) comes from the building record in the database.
+/// - A real HTTP call is made to the Open-Meteo API (no API key required).
+/// - Results are cached for 15 minutes; the refresh button increments
+///   [_weatherRefreshCounterProvider] so the next fetch bypasses the cache.
+/// - Per-user rate limiting (30 calls / hour) prevents abuse.
+/// - Returns `null` on error / no coordinates / rate limited.
 final weatherProvider = FutureProvider.autoDispose<WeatherData?>((ref) async {
+  // Watch both presence (auto-refresh on building change) and the refresh
+  // counter (manual refresh via button).
   final presence = ref.watch(presenceStateProvider);
+  final refreshCount = ref.watch(_weatherRefreshCounterProvider);
   final building = presence.activeBuilding;
-  if (building == null || building.latitude == null || building.longitude == null) {
+  if (building == null ||
+      building.latitude == null ||
+      building.longitude == null) {
     return null;
   }
+
+  // Resolve the current user ID for rate limiting.
+  final authState = ref.read(authStateProvider);
+  final userId = authState.user?.id ?? 'anonymous';
+
   final service = ref.read(weatherServiceProvider);
+
+  // If the counter was bumped (refresh button), force a fresh API call.
+  final forceRefresh = refreshCount > 0;
+
   return service.fetchWeather(
     latitude: building.latitude!,
     longitude: building.longitude!,
+    userId: userId,
+    forceRefresh: forceRefresh,
   );
 });
+
+/// Call this to trigger a live weather refresh (clears cache for the active
+/// building and rebuilds the weather provider). Intended for the refresh
+/// button and pull-to-refresh.
+void refreshWeather(WidgetRef ref) {
+  final building = ref.read(presenceStateProvider).activeBuilding;
+  if (building != null &&
+      building.latitude != null &&
+      building.longitude != null) {
+    // Clear the cached entry for this building so the next fetch hits the API.
+    ref
+        .read(weatherServiceProvider)
+        .clearCacheForLocation(building.latitude!, building.longitude!);
+  }
+  // Bump the counter to force the provider to re-evaluate.
+  ref.read(_weatherRefreshCounterProvider.notifier).state++;
+  // Invalidate so listeners get the new AsyncValue.loading → data cycle.
+  ref.invalidate(weatherProvider);
+}

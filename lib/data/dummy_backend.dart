@@ -167,6 +167,53 @@ class DummyBackend {
   /// Returns SDUI dashboard config for a building.
   /// Each building demonstrates a different dashboard style.
   /// Returns null for unknown buildings → triggers default dashboard fallback.
+  ///
+  /// ── 3rd-Party API Integration Example ──
+  ///
+  /// The `weather_badge` widget in each config below stores only **fallback**
+  /// placeholder values (`temp: '--'`). At runtime the app:
+  ///   1. Reads the building's `latitude` / `longitude` from the database.
+  ///   2. Calls the **Open-Meteo API** (free, no key) to fetch real-time
+  ///      temperature, humidity, wind speed, and weather condition.
+  ///   3. Injects the live values into every `weather_badge` node before
+  ///      rendering.
+  ///
+  /// The same pattern can be used for **any** dashboard field that should
+  /// be populated from an external data source per-building:
+  ///
+  /// ```json
+  /// // Example: populate CO₂ from a building-specific IoT API
+  /// {
+  ///   "type": "metric_tile",
+  ///   "icon": "co2",
+  ///   "value": "--",          // ← placeholder; overwritten at runtime
+  ///   "unit": "ppm",
+  ///   "label": "CO₂",
+  ///   "_data_source": {        // ← metadata consumed by the injection layer
+  ///     "provider": "building_iot_api",
+  ///     "endpoint": "https://iot.example.com/v1/buildings/{buildingId}/co2",
+  ///     "field": "current_ppm",
+  ///     "refresh_seconds": 300
+  ///   }
+  /// }
+  ///
+  /// // Example: populate outdoor air-quality from a free API
+  /// {
+  ///   "type": "kpi_card",
+  ///   "title": "Air Quality Index",
+  ///   "value": "--",
+  ///   "unit": " AQI",
+  ///   "_data_source": {
+  ///     "provider": "open_meteo_air_quality",
+  ///     "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&current=european_aqi",
+  ///     "field": "current.european_aqi"
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// In production the backend would resolve `_data_source` before returning
+  /// the config, or the app's injection layer can interpret it client-side
+  /// (as demonstrated with `weather_badge` + `WeatherService`).
   Future<Map<String, dynamic>?> getDashboardConfig(String buildingId) async {
     final configs = <String, Map<String, dynamic>>{
       // ───────────────────────────────────────────────────────────────────
@@ -250,9 +297,10 @@ class DummyBackend {
         'type': 'column',
         'crossAxisAlignment': 'stretch',
         'children': [
+          // weather_badge: real-time from Open-Meteo API (building lat/lon)
           {
             'type': 'weather_badge',
-            'temp': '9',
+            'temp': '--',
             'unit': '°C',
             'label': 'Outside',
             'icon': 'cloud',
@@ -394,12 +442,13 @@ class DummyBackend {
         'type': 'column',
         'crossAxisAlignment': 'stretch',
         'children': [
+          // weather_badge: real-time from Open-Meteo API (building lat/lon)
           {
             'type': 'weather_badge',
-            'temp': '29',
+            'temp': '--',
             'unit': '°C',
             'label': 'Outside',
-            'icon': 'wb_sunny',
+            'icon': 'cloud',
           },
           {'type': 'spacer', 'height': 12},
 
@@ -528,12 +577,13 @@ class DummyBackend {
         'type': 'column',
         'crossAxisAlignment': 'stretch',
         'children': [
+          // weather_badge: real-time from Open-Meteo API (building lat/lon)
           {
             'type': 'weather_badge',
-            'temp': '5',
+            'temp': '--',
             'unit': '°C',
             'label': 'Outside',
-            'icon': 'ac_unit',
+            'icon': 'cloud',
           },
           {'type': 'spacer', 'height': 12},
 
