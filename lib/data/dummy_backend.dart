@@ -1,4 +1,7 @@
+import 'dart:math';
+
 import '../domain/models/building.dart';
+import '../domain/models/building_comfort.dart';
 import '../domain/models/app_config.dart';
 import '../domain/models/notification_payload.dart';
 import '../platform/logger.dart';
@@ -1230,6 +1233,178 @@ class DummyBackend {
     };
 
     return _simulateLatency(configs[buildingId]);
+  }
+
+  // ── Building Comfort Aggregation ───────────────────────────────────
+
+  /// Returns aggregate comfort vote data for a building, broken down by
+  /// floor and room when location data is available.
+  ///
+  /// In a real backend this would aggregate actual vote records. Here we
+  /// generate realistic seed data keyed to each building's location config.
+  /// Returns null for buildings with no location config (e.g. bldg-002).
+  ///
+  /// The response optionally includes an `sduiConfig` key — when present
+  /// the Building Comfort screen uses SDUI rendering instead of the default.
+  Future<BuildingComfortData?> getComfortData(String buildingId) async {
+    final locationConfig = await getLocationFormConfig(buildingId);
+    final building = _buildings.where((b) => b.id == buildingId).firstOrNull;
+    if (building == null) return _simulateLatency(null);
+
+    final rng = Random(buildingId.hashCode); // deterministic per building
+
+    final List<LocationComfortData> locations = [];
+
+    if (locationConfig != null) {
+      final floors =
+          (locationConfig['floors'] as List<dynamic>?) ?? <dynamic>[];
+      final roomsMap =
+          (locationConfig['rooms'] as Map<String, dynamic>?) ?? {};
+
+      for (final floor in floors) {
+        final floorValue = floor['value'] as String;
+        final floorLabel = floor['label'] as String;
+        final rooms =
+            (roomsMap[floorValue] as List<dynamic>?) ?? <dynamic>[];
+
+        for (final room in rooms) {
+          final roomValue = room['value'] as String;
+          final roomLabel = room['label'] as String;
+
+          // Generate a plausible comfort score per room.
+          final score =
+              5.0 + rng.nextDouble() * 4.5; // 5.0 – 9.5 range
+          final votes = 3 + rng.nextInt(25);
+
+          locations.add(LocationComfortData(
+            floor: floorValue,
+            floorLabel: floorLabel,
+            room: roomValue,
+            roomLabel: roomLabel,
+            comfortScore: double.parse(score.toStringAsFixed(1)),
+            voteCount: votes,
+            breakdown: {
+              'thermal':
+                  double.parse((4.0 + rng.nextDouble() * 5.5).toStringAsFixed(1)),
+              'air_quality':
+                  double.parse((5.0 + rng.nextDouble() * 4.5).toStringAsFixed(1)),
+              'noise':
+                  double.parse((4.5 + rng.nextDouble() * 5.0).toStringAsFixed(1)),
+            },
+          ));
+        }
+      }
+    } else {
+      // No location config → single building-level entry.
+      locations.add(LocationComfortData(
+        floor: '-',
+        floorLabel: 'All Areas',
+        comfortScore:
+            double.parse((6.0 + rng.nextDouble() * 3.5).toStringAsFixed(1)),
+        voteCount: 12 + rng.nextInt(40),
+        breakdown: {
+          'thermal':
+              double.parse((5.0 + rng.nextDouble() * 4.5).toStringAsFixed(1)),
+          'air_quality':
+              double.parse((5.5 + rng.nextDouble() * 4.0).toStringAsFixed(1)),
+        },
+      ));
+    }
+
+    // Compute overall weighted average.
+    final totalVotes = locations.fold<int>(0, (s, l) => s + l.voteCount);
+    final weightedSum =
+        locations.fold<double>(0, (s, l) => s + l.comfortScore * l.voteCount);
+    final overall = totalVotes > 0 ? weightedSum / totalVotes : 0.0;
+
+    // Optional SDUI override — only bldg-003 gets a custom comfort layout
+    // to demonstrate the SDUI path. All others use the default renderer.
+    Map<String, dynamic>? sduiConfig;
+    if (buildingId == 'bldg-003') {
+      sduiConfig = _labComfortSduiConfig(locations, overall);
+    }
+
+    return _simulateLatency(BuildingComfortData(
+      buildingId: buildingId,
+      buildingName: building.name,
+      overallScore: double.parse(overall.toStringAsFixed(1)),
+      totalVotes: totalVotes,
+      computedAt: DateTime.now(),
+      locations: locations,
+      sduiConfig: sduiConfig,
+    ));
+  }
+
+  /// Example SDUI config for bldg-003's comfort page, demonstrating that
+  /// the comfort screen supports server-driven layout.
+  Map<String, dynamic> _labComfortSduiConfig(
+    List<LocationComfortData> locations,
+    double overall,
+  ) {
+    return {
+      'type': 'column',
+      'crossAxisAlignment': 'stretch',
+      'children': [
+        {
+          'type': 'image_banner',
+          'title': 'Lab Comfort Report',
+          'subtitle':
+              '${locations.fold<int>(0, (s, l) => s + l.voteCount)} votes across ${locations.length} zones',
+          'icon': 'science',
+          'color': 'teal',
+        },
+        {'type': 'spacer', 'height': 16},
+        {
+          'type': 'grid',
+          'columns': 2,
+          'spacing': 10,
+          'children': [
+            {
+              'type': 'kpi_card',
+              'title': 'Overall Comfort',
+              'value': overall.toStringAsFixed(1),
+              'unit': '/10',
+              'trend': overall >= 7.0 ? 'up' : 'down',
+              'color': overall >= 7.0 ? 'green' : 'orange',
+            },
+            {
+              'type': 'kpi_card',
+              'title': 'Zones Monitored',
+              'value': '${locations.length}',
+              'unit': '',
+              'color': 'teal',
+            },
+          ],
+        },
+        {'type': 'spacer', 'height': 16},
+        {
+          'type': 'section_header',
+          'title': 'Zone Breakdown',
+          'icon': 'layers',
+        },
+        {'type': 'spacer', 'height': 8},
+        // One stat_row per location
+        ...locations.map((loc) => {
+              'type': 'stat_row',
+              'icon': 'meeting_room',
+              'label': '${loc.floorLabel} · ${loc.roomLabel ?? "All"}',
+              'value': '${loc.comfortScore}/10  (${loc.voteCount} votes)',
+              'color': loc.comfortScore >= 7.5 ? 'green' : 'orange',
+            }),
+        {'type': 'spacer', 'height': 16},
+        {
+          'type': 'alert_banner',
+          'icon': 'science',
+          'title': overall >= 7.0
+              ? 'Lab environment is comfortable'
+              : 'Some zones need attention',
+          'subtitle': overall >= 7.0
+              ? 'All zones report good comfort levels.'
+              : 'Review zones scoring below 7.0.',
+          'color': overall >= 7.0 ? 'green' : 'orange',
+        },
+      ],
+    };
   }
 
   // ── Push simulation ───────────────────────────────────────────────────

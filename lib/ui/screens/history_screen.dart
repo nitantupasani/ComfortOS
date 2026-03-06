@@ -178,7 +178,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ),
 
             // ── Bottom nav ──
-            const AppBottomNavBar(currentIndex: 1),
+            const AppBottomNavBar(currentIndex: 2),
           ],
         ),
       ),

@@ -114,7 +114,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
 
             // ── Bottom nav ──
-            const AppBottomNavBar(currentIndex: 2),
+            const AppBottomNavBar(currentIndex: 3),
           ],
         ),
       ),

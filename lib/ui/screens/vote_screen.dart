@@ -132,7 +132,7 @@ class VoteScreen extends ConsumerWidget {
                                   ),
                                 );
                                 if (result == 'accepted') {
-                                  context.go('/dashboard');
+                                  context.go('/comfort');
                                 }
                               }
                             },

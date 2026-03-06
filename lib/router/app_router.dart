@@ -5,6 +5,7 @@ import '../state/providers.dart';
 import '../ui/screens/login_screen.dart';
 import '../ui/screens/home_screen.dart';
 import '../ui/screens/dashboard_screen.dart';
+import '../ui/screens/building_comfort_screen.dart';
 import '../ui/screens/vote_screen.dart';
 import '../ui/screens/presence_screen.dart';
 import '../ui/screens/location_screen.dart';
@@ -34,8 +35,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // ── Building-context guard ──────────────────────────────────────
       if (isAuthenticated &&
-          (location == '/dashboard' ||
-           location == '/vote' ||
+          (location == '/dashboard' ||           location == '/comfort' ||           location == '/vote' ||
            location == '/history' ||
            location == '/location')) {
         final presence = ref.read(presenceStateProvider);
@@ -74,6 +74,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/dashboard',
         builder: (ctx, state) => const DashboardScreen(),
+      ),
+      GoRoute(
+        path: '/comfort',
+        builder: (ctx, state) => const BuildingComfortScreen(),
       ),
       GoRoute(
         path: '/vote',

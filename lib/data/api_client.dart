@@ -1,4 +1,5 @@
 import '../domain/models/building.dart';
+import '../domain/models/building_comfort.dart';
 import '../domain/models/vote.dart';
 import '../domain/models/app_config.dart';
 import '../platform/logger.dart';
@@ -146,5 +147,12 @@ class ApiClient {
     _requireAuth();
     await _rateLimit('history_$userId');
     return _backend.getVoteHistory(userId);
+  }
+
+  /// Fetch aggregate comfort data for a building.
+  Future<BuildingComfortData?> getComfortData(String buildingId) async {
+    _requireAuth();
+    await _rateLimit('comfort_$buildingId');
+    return _backend.getComfortData(buildingId);
   }
 }

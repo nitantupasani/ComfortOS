@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 
 /// Persistent bottom navigation bar shared across main screens.
 ///
-/// Tabs: Dashboard, History (vote history), Settings.
+/// Tabs: Dashboard, Comfort, History (vote history), Settings.
 class AppBottomNavBar extends StatelessWidget {
   final int currentIndex;
 
@@ -14,6 +14,11 @@ class AppBottomNavBar extends StatelessWidget {
       icon: Icon(Icons.dashboard_outlined),
       selectedIcon: Icon(Icons.dashboard),
       label: 'Dashboard',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.bar_chart_outlined),
+      selectedIcon: Icon(Icons.bar_chart),
+      label: 'Comfort',
     ),
     NavigationDestination(
       icon: Icon(Icons.history_outlined),
@@ -44,9 +49,12 @@ class AppBottomNavBar extends StatelessWidget {
         context.go('/dashboard');
         break;
       case 1:
-        context.go('/history');
+        context.go('/comfort');
         break;
       case 2:
+        context.go('/history');
+        break;
+      case 3:
         context.go('/settings');
         break;
     }

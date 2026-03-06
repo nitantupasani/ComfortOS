@@ -13,6 +13,7 @@ import '../services/presence_resolver.dart';
 import '../services/sync_worker.dart';
 import '../services/weather_service.dart';
 import '../domain/models/weather_data.dart';
+import '../domain/models/building_comfort.dart';
 
 import 'auth_state.dart';
 import 'presence_state.dart';
@@ -209,3 +210,15 @@ void refreshWeather(WidgetRef ref) {
   // Invalidate so listeners get the new AsyncValue.loading → data cycle.
   ref.invalidate(weatherProvider);
 }
+
+// ── Building Comfort ────────────────────────────────────────────────────
+
+/// Aggregate comfort vote data for the active building, broken down by
+/// floor and room. Returns null for buildings with no vote data.
+final buildingComfortProvider =
+    FutureProvider.family.autoDispose<BuildingComfortData?, String>(
+        (ref, buildingId) async {
+  if (buildingId.isEmpty) return null;
+  final apiClient = ref.read(apiClientProvider);
+  return apiClient.getComfortData(buildingId);
+});
